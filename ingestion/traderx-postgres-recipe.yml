@@ -31,11 +31,11 @@ source:
         - "public"
     table_pattern:
       allow:
-        - "public.accounts"
-        - "public.accountusers"
-        - "public.positions"
-        - "public.trades"
-        - "public.orderbook"
+        - "traderx.public.accounts"
+        - "traderx.public.accountusers"
+        - "traderx.public.positions"
+        - "traderx.public.trades"
+        - "traderx.public.orderbook"
     include_views: false
     profiling:
       enabled: false
