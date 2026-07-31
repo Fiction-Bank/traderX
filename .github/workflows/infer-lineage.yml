@@ -1,0 +1,41 @@
+# Re-infers Cash Equities lineage whenever the spec corpus changes -- that's
+# the moment TraderX's actual data-flow model can have changed, mirroring
+# "DDL changed -> re-derive the logical model" elsewhere in the Fiction Bank
+# sandbox. Requires ANTHROPIC_API_KEY, DATAHUB_SERVER, and DATAHUB_TOKEN as
+# repo secrets, and a network-reachable (not localhost) DataHub instance.
+#
+# Manual runs (workflow_dispatch) always run in dry-run mode -- the actual
+# secrets-backed emit only happens on push to specs/**. Adjust if you want
+# manual runs to write too.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'specs/**'
+  workflow_dispatch:
+
+jobs:
+  infer-lineage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic requests
+
+      - name: Infer and emit lineage
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DATAHUB_SERVER: ${{ secrets.DATAHUB_SERVER }}
+          DATAHUB_TOKEN: ${{ secrets.DATAHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python tools/infer_lineage_from_specs.py --dry-run
+          else
+            python tools/infer_lineage_from_specs.py
+          fi

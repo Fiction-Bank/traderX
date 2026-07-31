@@ -1,117 +1,196 @@
 #!/usr/bin/env python3
 """
-infer_lineage_from_specs.py — TraderX bespoke lineage (prototype)
+infer_lineage_from_specs.py — TraderX bespoke lineage
 
-PROTOTYPE NOTE: this stands in for step 2 of the real pipeline ("call an LLM
-with the spec corpus, get back a JSON graph"). That step is hardcoded below
-as EDGES / DATAJOBS instead of an actual API call, so this can run without
-wiring an LLM API key. Everything downstream of that — validating the graph
-against what's actually ingested in DataHub, and emitting it — is real, not
-a stand-in, and is exactly what the CI-wired version would also do.
+Reads this repo's spec-kit corpus (specs/**/system/messaging-subject-map.md,
+specs/**/system/architecture.model.json, specs/**/data-model.md) and asks
+Claude to reconstruct the current data-flow graph -- which table is written
+downstream of which other table, mediated by which Java service -- forced
+into a fixed JSON shape via output_config.format (structured outputs), with
+every edge required to cite the exact spec evidence that justifies it.
 
-Each assertion below cites the spec file(s) and edge(s) that justify it, so
-the reasoning is auditable rather than a black box:
+This is necessary because TraderX's Trades/Positions tables are written by
+Java microservices (order-matcher, trade-processor) via NATS, not SQL --
+there is no view or query for DataHub's native ingestion source to parse, so
+lineage here can only ever be asserted, never inferred from SQL.
 
-  ORDERBOOK -> TRADES
-    specs/009-order-management-matcher/system/architecture.model.json:
-      order_matcher -> nats  ("Publishes fills and status")
-      nats -> trade_processor  ("Delivers matcher-generated fills")
-    specs/006-messaging-nats-replacement/system/architecture.model.json:
-      tradeProcessor -> database  ("Persist trade/position state")
-    i.e. a matched order becomes a fill event, consumed and persisted as a
-    trade by trade-processor. Nowhere is this expressed in SQL — order-matcher
-    and trade-processor are Java services connected by a NATS subject.
-
-  TRADES -> POSITIONS
-    specs/006-messaging-nats-replacement/system/architecture.model.json:
-      tradeProcessor -> database  ("Persist trade/position state")
-    trade-processor persists both trade and position state from the same
-    consumed event, so a trade produces the corresponding position update.
-
-The real (non-prototype) version replaces build_inferred_graph() with an LLM
-call reading specs/**/system/messaging-subject-map.md,
-specs/**/system/architecture.model.json, and specs/**/data-model.md, forced
-into the same {edges, datajobs} JSON shape via a schema — everything else in
-this file (validation, emission) stays the same.
+Everything after the LLM call is NOT a stand-in: every dataset/table name
+the model returns is validated against what's actually ingested in DataHub
+before anything is emitted, exactly as a hand-written lineage script would.
 
 Usage:
     python tools/infer_lineage_from_specs.py --dry-run
     python tools/infer_lineage_from_specs.py --server http://localhost:9080 --token <tok>
 
 Environment variables (alternative to CLI args):
-    DATAHUB_SERVER   DataHub GMS URL (default: http://localhost:8080)
-    DATAHUB_TOKEN    DataHub access token
+    DATAHUB_SERVER     DataHub GMS URL (default: http://localhost:8080)
+    DATAHUB_TOKEN      DataHub access token
+    ANTHROPIC_API_KEY  Anthropic API key (required unless --dry-run)
 """
 
 import argparse
+import glob
 import json
 import os
 import sys
 
+import anthropic
 import requests
 
 PLATFORM = "postgres"
 ENV = "PROD"
 DATABASE = "traderx"
 
-INFERRED_BY = "prototype-manual-pass (stand-in for LLM step)"
+CANDIDATE_TABLES = ["accounts", "accountusers", "orderbook", "trades", "positions"]
+
+INFERRED_BY = "claude-opus-5 (structured-output inference over specs/** corpus)"
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _dataset_urn(table: str) -> str:
     return f"urn:li:dataset:(urn:li:dataPlatform:{PLATFORM},{DATABASE}.public.{table},{ENV})"
 
 
-ACCOUNTS = _dataset_urn("accounts")
-ACCOUNT_USERS = _dataset_urn("accountusers")
-ORDERBOOK = _dataset_urn("orderbook")
-TRADES = _dataset_urn("trades")
-POSITIONS = _dataset_urn("positions")
-
 FLOW_URN = "urn:li:dataFlow:(traderx,trade-lifecycle,PROD)"
-JOB_URN = "urn:li:dataJob:(urn:li:dataFlow:(traderx,trade-lifecycle,PROD),trade-processor)"
 
-
-# ---------------------------------------------------------------------------
-# Step 2 stand-in: the inferred graph (see module docstring for evidence)
-# ---------------------------------------------------------------------------
-
-def build_inferred_graph() -> dict:
-    return {
-        "edges": [
-            {
-                "downstream": TRADES,
-                "upstreams": [ORDERBOOK],
-                "evidence": (
-                    "specs/009-order-management-matcher/system/architecture.model.json "
-                    "(order_matcher->nats->trade_processor); "
-                    "specs/006-messaging-nats-replacement/system/architecture.model.json "
-                    "(tradeProcessor->database)"
-                ),
+LINEAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "edges": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "downstream": {"type": "string", "enum": CANDIDATE_TABLES},
+                    "upstreams": {"type": "array", "items": {"type": "string", "enum": CANDIDATE_TABLES}},
+                    "evidence": {"type": "string", "description": "Exact spec file path(s) and node/edge names that justify this edge."},
+                },
+                "required": ["downstream", "upstreams", "evidence"],
+                "additionalProperties": False,
             },
-            {
-                "downstream": POSITIONS,
-                "upstreams": [TRADES],
-                "evidence": (
-                    "specs/006-messaging-nats-replacement/system/architecture.model.json "
-                    "(tradeProcessor->database: persists trade/position state from the same event)"
-                ),
-            },
-        ],
-        "datajob": {
-            "urn": JOB_URN,
-            "flow_urn": FLOW_URN,
-            "name": "trade-processor",
-            "description": (
-                "Consumes matcher-generated fills (from order-matcher via NATS) and "
-                "direct trade submissions (from trade-service), persists trades and "
-                "positions. Java service, not a SQL job -- lineage here can only ever "
-                "be asserted, not inferred from a query."
-            ),
-            "inputs": [ORDERBOOK],
-            "outputs": [TRADES, POSITIONS],
         },
-        # Origination points -- no upstream by design, listed for completeness.
-        "origination_only": [ACCOUNTS, ACCOUNT_USERS],
+        "datajob": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Short kebab-case service name, e.g. trade-processor."},
+                "description": {"type": "string"},
+                "inputs": {"type": "array", "items": {"type": "string", "enum": CANDIDATE_TABLES}},
+                "outputs": {"type": "array", "items": {"type": "string", "enum": CANDIDATE_TABLES}},
+            },
+            "required": ["name", "description", "inputs", "outputs"],
+            "additionalProperties": False,
+        },
+        "origination_only": {
+            "type": "array",
+            "items": {"type": "string", "enum": CANDIDATE_TABLES},
+            "description": "Tables with no upstream by design (master/reference data written directly by a service, not derived from another table).",
+        },
+    },
+    "required": ["edges", "datajob", "origination_only"],
+    "additionalProperties": False,
+}
+
+
+# ---------------------------------------------------------------------------
+# Step 1: gather the spec corpus this repo actually ships
+# ---------------------------------------------------------------------------
+
+def collect_spec_corpus(repo_root: str) -> str:
+    patterns = [
+        "specs/*/system/messaging-subject-map.md",
+        "specs/*/system/architecture.model.json",
+        "specs/*/data-model.md",
+    ]
+    parts = []
+    for pattern in patterns:
+        for path in sorted(glob.glob(os.path.join(repo_root, pattern))):
+            rel = os.path.relpath(path, repo_root)
+            with open(path) as fh:
+                parts.append(f"=== {rel} ===\n{fh.read()}")
+    return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Step 2: ask Claude to reconstruct the lineage graph, evidence-cited
+# ---------------------------------------------------------------------------
+
+def call_llm_for_lineage(repo_root: str) -> dict:
+    corpus = collect_spec_corpus(repo_root)
+
+    prompt = f"""You are reconstructing the current data-flow graph of TraderX (a FINOS
+reference trading application) for a data catalog, from its spec-kit corpus.
+
+TraderX's live Postgres database (database "traderx", schema "public") has exactly
+these tables: {", ".join(CANDIDATE_TABLES)}. These are written directly by Java and
+TypeScript microservices -- not by SQL views or queries -- so lineage between them
+can only be reconstructed by reading the architecture docs below, never by parsing SQL.
+
+Below is the full corpus of this repo's spec-kit artifacts across all of its
+incremental feature states: each state's messaging-subject-map.md (NATS subject
+producer/consumer map), architecture.model.json (service topology graph), and
+data-model.md (entity-to-table deltas).
+
+Read all of it and determine:
+1. Which table is downstream of which other table, mediated by a service (an
+   "edge") -- e.g. does a filled order become a trade? Does a trade produce a
+   position update? For every edge, cite the exact spec file path(s) and the
+   specific node/edge names or subject names that justify it. Do not assert an
+   edge you cannot point to real evidence for in the corpus below.
+2. The one service most responsible for writing the transactional tables
+   (trades/positions) -- its name, a one-sentence description, and its input
+   and output tables.
+3. Which tables have no upstream by design (origination points -- master or
+   reference data written directly by a service, not derived from another
+   table) -- list them in origination_only.
+
+Only ever reference the {len(CANDIDATE_TABLES)} table names listed above.
+
+=== SPEC CORPUS ===
+{corpus}
+"""
+
+    client = anthropic.Anthropic()
+    response = client.messages.create(
+        model="claude-opus-5",
+        max_tokens=4096,
+        output_config={"format": {"type": "json_schema", "schema": LINEAGE_SCHEMA}},
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    if response.stop_reason == "refusal":
+        raise RuntimeError(f"Claude declined the request: {response.stop_details}")
+
+    text = next(block.text for block in response.content if block.type == "text")
+    return json.loads(text)
+
+
+def build_inferred_graph(repo_root: str) -> dict:
+    raw = call_llm_for_lineage(repo_root)
+
+    edges = [
+        {
+            "downstream": _dataset_urn(e["downstream"]),
+            "upstreams": [_dataset_urn(u) for u in e["upstreams"]],
+            "evidence": e["evidence"],
+        }
+        for e in raw["edges"]
+    ]
+
+    dj = raw["datajob"]
+    job_urn = f"urn:li:dataJob:({FLOW_URN},{dj['name']})"
+
+    return {
+        "edges": edges,
+        "datajob": {
+            "urn": job_urn,
+            "flow_urn": FLOW_URN,
+            "name": dj["name"],
+            "description": dj["description"],
+            "inputs": [_dataset_urn(t) for t in dj["inputs"]],
+            "outputs": [_dataset_urn(t) for t in dj["outputs"]],
+        },
+        "origination_only": [_dataset_urn(t) for t in raw["origination_only"]],
     }
 
 
@@ -160,9 +239,14 @@ def dataset_exists(server: str, token: str, dataset_urn: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def run(server: str, token: str, dry_run: bool) -> None:
-    graph = build_inferred_graph()
     print(f"DataHub server : {server}")
     print(f"Dry run        : {dry_run}")
+    print()
+
+    print("=== Asking Claude to reconstruct lineage from specs/** ===")
+    graph = build_inferred_graph(REPO_ROOT)
+    print(f"  {len(graph['edges'])} edge(s), 1 datajob ({graph['datajob']['name']}), "
+          f"{len(graph['origination_only'])} origination-only table(s)")
     print()
 
     print("=== Validating inferred edges against live DataHub ===")
@@ -287,6 +371,11 @@ def main() -> None:
 
     if not args.dry_run and not args.token:
         print("ERROR: --token or DATAHUB_TOKEN required (or use --dry-run)", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("ERROR: ANTHROPIC_API_KEY required -- this script calls Claude even in --dry-run "
+              "(dry-run only skips writing to DataHub, not the inference step)", file=sys.stderr)
         sys.exit(1)
 
     run(server=args.server, token=args.token, dry_run=args.dry_run)
