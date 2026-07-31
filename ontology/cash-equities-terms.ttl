@@ -1,0 +1,79 @@
+@prefix skos:         <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:          <http://www.w3.org/2001/XMLSchema#> .
+@prefix dc:           <http://purl.org/dc/elements/1.1/> .
+@prefix cash-equities: <http://fictionbank.example/ontology/cash-equities#> .
+
+# =============================================================================
+# Fiction Bank Cash Equities — Domain Ontology
+#
+# Covers concepts specific to the Cash Equities desk (TraderX reference app).
+# Terms that belong to the Securities Lending domain (rate normalization, tiers,
+# lending inventory) are NOT duplicated here — use urn:li:glossaryTerm:sec-lending.*
+# for those, even though both desks sit under Institutional Securities > Equities.
+# =============================================================================
+
+cash-equities:CashEquitiesScheme a skos:ConceptScheme ;
+    skos:prefLabel "Fiction Bank Cash Equities Terms"@en ;
+    dc:description "SKOS concept scheme for the Cash Equities desk's internal vocabulary." ;
+    dc:created "2026-07-31" .
+
+# ---------------------------------------------------------------------------
+# Account Concepts
+# ---------------------------------------------------------------------------
+
+cash-equities:Account a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:prefLabel "Account"@en ;
+    skos:definition "A trading account through which orders are placed and positions are held. May represent an internal book, a client fund, or an algo execution partner. Stored in ACCOUNTS (ID, DisplayName)."@en .
+
+cash-equities:AccountEntitlement a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:prefLabel "Account Entitlement"@en ;
+    skos:definition "The mapping of a trader (username) to the account(s) they are permitted to act on. Stored in ACCOUNTUSERS (AccountID, Username). A username may be entitled to multiple accounts."@en .
+
+# ---------------------------------------------------------------------------
+# Order & Trade Lifecycle Concepts
+# ---------------------------------------------------------------------------
+
+cash-equities:Order a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:prefLabel "Order"@en ;
+    skos:definition "An instruction to buy or sell a quantity of a security at a limit price, submitted against an account. Stored in ORDERBOOK. Not yet a Trade until matched/executed."@en ;
+    skos:narrower cash-equities:OrderStatus .
+
+cash-equities:OrderStatus a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:broader cash-equities:Order ;
+    skos:prefLabel "Order Status"@en ;
+    skos:definition "Lifecycle state of an order: NEW, PARTIALLY_FILLED, FILLED, CANCELED, or REJECTED. Tracked via the ORDERBOOK.Status column alongside RemainingQuantity and LastExecutionPrice."@en .
+
+cash-equities:Trade a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:prefLabel "Trade"@en ;
+    skos:definition "An executed buy or sell of a security against an account, resulting from order matching. Stored in TRADES (ID, AccountID, Security, Side, Quantity, State)."@en ;
+    skos:narrower cash-equities:TradeState .
+
+cash-equities:TradeState a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:broader cash-equities:Trade ;
+    skos:prefLabel "Trade State"@en ;
+    skos:definition "Lifecycle state of a trade: New, Processing, Settled, or Cancelled. Tracked via the TRADES.State column."@en .
+
+cash-equities:Side a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:prefLabel "Side"@en ;
+    skos:definition "Direction of an order or trade: Buy or Sell."@en .
+
+# ---------------------------------------------------------------------------
+# Position Concepts
+# ---------------------------------------------------------------------------
+
+cash-equities:Position a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:prefLabel "Position"@en ;
+    skos:definition "The net quantity of a security held by an account as of the last update, derived from settled trades. Stored in POSITIONS (AccountID, Security, Updated, Quantity). A negative quantity indicates a short position."@en .
+
+cash-equities:Security a skos:Concept ;
+    skos:inScheme cash-equities:CashEquitiesScheme ;
+    skos:prefLabel "Security"@en ;
+    skos:definition "A tradable equity instrument, identified by ticker symbol (e.g. IBM, MS, C). Reference data (company name, sector) is served by the TraderX reference-data service from an S&P 500 constituent list, not persisted in the transactional Postgres database."@en .

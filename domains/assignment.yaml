@@ -1,0 +1,35 @@
+# Domain assignment for traderX (Fiction Bank Cash Equities reference app).
+# TraderX is FINOS's reference front-to-back trading platform — account management,
+# order book, trade execution, and position keeping for the Cash Equities desk.
+# Run fiction-bank-firm-data-office/src/setup_domains.py first.
+#
+# Platform is "postgres" — the live TraderX application database (db: traderx).
+# Dataset names follow DataHub's postgres source convention: <database>.<schema>.<table>
+
+domain_urn: urn:li:domain:fiction-bank.institutional-securities.equities.cash-equities
+
+datasets:
+  - platform: postgres
+    name: traderx.public.accounts
+    description: "Trading accounts — client funds, internal books, and algo execution partners"
+
+  - platform: postgres
+    name: traderx.public.accountusers
+    description: "User-to-account entitlement mapping — which traders can act on which accounts"
+
+  - platform: postgres
+    name: traderx.public.positions
+    description: "Current position book — quantity held per account/security"
+
+  - platform: postgres
+    name: traderx.public.trades
+    description: "Executed and settling trades — full lifecycle from New through Settled/Cancelled"
+
+  - platform: postgres
+    name: traderx.public.orderbook
+    description: "Live order book — resting, partially filled, and terminal orders"
+
+term_group:
+  urn: urn:li:glossaryNode:CashEquities
+  description: "Internal business terms for the Cash Equities trading desk"
+  terms_ttl: ontology/cash-equities-terms.ttl

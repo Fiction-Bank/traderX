@@ -1,0 +1,57 @@
+# TraderX Postgres ingestion recipe — Fiction Bank Cash Equities
+# Ingests the live TraderX application database (traderx: Accounts, AccountUsers,
+# Positions, Trades, OrderBook) and assigns every table to the Cash Equities domain.
+# Run after setup_domains.py (Institutional Securities > Equities > Cash Equities
+# domain must exist).
+#
+# NOTE: domain_pattern values must be the actual DataHub-assigned URN, not the
+# human-readable slug. The URN below is the deterministic one from domain-hierarchy.yaml
+# (urn:li:domain:1112). If setup_domains.py was run against an instance that minted a
+# different UUID for this domain, replace the value below with that URN.
+#
+# Logical name : Institutional Securities > Equities > Cash Equities
+# DataHub URN  : urn:li:domain:1112
+#
+# Usage:
+#   export DATAHUB_TOKEN=<your-token>
+#   export TRADERX_DB_HOST=<host>       # default: localhost
+#   export TRADERX_DB_PORT=<port>       # default: 5432 (18083 if using the compose port mapping)
+#   export TRADERX_DB_PASSWORD=<password>
+#   datahub ingest -c ingestion/traderx-postgres-recipe.yml
+
+source:
+  type: postgres
+  config:
+    host_port: "${TRADERX_DB_HOST:-localhost}:${TRADERX_DB_PORT:-5432}"
+    database: traderx
+    username: traderx
+    password: "${TRADERX_DB_PASSWORD}"
+    schema_pattern:
+      allow:
+        - "public"
+    table_pattern:
+      allow:
+        - "public.accounts"
+        - "public.accountusers"
+        - "public.positions"
+        - "public.trades"
+        - "public.orderbook"
+    include_views: false
+    profiling:
+      enabled: false
+
+transformers:
+  - type: "pattern_add_dataset_domain"
+    config:
+      semantics: OVERWRITE
+      domain_pattern:
+        rules:
+          ".*": # every table matched by table_pattern above belongs to Cash Equities
+            - "urn:li:domain:1112"
+
+sink:
+  type: datahub-rest
+  config:
+    server: "${DATAHUB_SERVER:-http://localhost:8080}"
+    token: "${DATAHUB_TOKEN}"
+    max_threads: 1
