@@ -5,6 +5,11 @@
 #
 # Platform is "postgres" — the live TraderX application database (db: traderx).
 # Dataset names follow DataHub's postgres source convention: <database>.<schema>.<table>
+#
+# Also includes "OpenApi" platform entries -- the same TraderX microservices'
+# REST API schemas, ingested separately (5 UI-configured OpenAPI sources,
+# one per microservice: account-service, people-service, position-service,
+# trade-processor, trade-service). Same application, same domain.
 
 domain_urn: urn:li:domain:fiction-bank.institutional-securities.equities.cash-equities
 
@@ -28,6 +33,67 @@ datasets:
   - platform: postgres
     name: traderx.public.orderbook
     description: "Live order book — resting, partially filled, and terminal orders"
+
+  # ── OpenAPI (REST schemas of the same TraderX microservices) ────────────
+  - platform: OpenApi
+    name: "TraderX_-_trade-service.trade"
+    description: "trade-service REST schema — trade object"
+
+  - platform: OpenApi
+    name: "TraderX_-_account-service.account"
+    description: "account-service REST schema — account object"
+
+  - platform: OpenApi
+    name: "TraderX_-_account-service.account.id"
+    description: "account-service REST schema — account.id field"
+
+  - platform: OpenApi
+    name: "TraderX_-_account-service.accountuser"
+    description: "account-service REST schema — accountuser object"
+
+  - platform: OpenApi
+    name: "TraderX_-_account-service.accountuser.id"
+    description: "account-service REST schema — accountuser.id field"
+
+  - platform: OpenApi
+    name: "TraderX_-_people-service.People.GetMatchingPeople"
+    description: "people-service REST endpoint — GetMatchingPeople"
+
+  - platform: OpenApi
+    name: "TraderX_-_people-service.People.GetPerson"
+    description: "people-service REST endpoint — GetPerson"
+
+  - platform: OpenApi
+    name: "TraderX_-_people-service.People.ValidatePerson"
+    description: "people-service REST endpoint — ValidatePerson"
+
+  - platform: OpenApi
+    name: "TraderX_-_position-service.health.alive"
+    description: "position-service REST endpoint — liveness probe"
+
+  - platform: OpenApi
+    name: "TraderX_-_position-service.health.ready"
+    description: "position-service REST endpoint — readiness probe"
+
+  - platform: OpenApi
+    name: "TraderX_-_position-service.positions"
+    description: "position-service REST schema — positions object"
+
+  - platform: OpenApi
+    name: "TraderX_-_position-service.positions.accountId"
+    description: "position-service REST schema — positions.accountId field"
+
+  - platform: OpenApi
+    name: "TraderX_-_position-service.trades"
+    description: "position-service REST schema — trades object"
+
+  - platform: OpenApi
+    name: "TraderX_-_position-service.trades.accountId"
+    description: "position-service REST schema — trades.accountId field"
+
+  - platform: OpenApi
+    name: "TraderX_-_trade-processor.tradeservice.order"
+    description: "trade-processor REST schema — tradeservice.order object"
 
 term_group:
   urn: urn:li:glossaryNode:CashEquities
