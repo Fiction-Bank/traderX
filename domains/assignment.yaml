@@ -14,25 +14,49 @@
 domain_urn: urn:li:domain:fiction-bank.institutional-securities.equities.cash-equities
 
 datasets:
+  # Medallion tier / authorized category per firm-data-office/docs/adr/0003:
+  # this repo's team owns these per-dataset classification decisions. All
+  # five are Bronze -- TraderX's Postgres tables are the live operational
+  # application database, not a curated warehouse output -- and Source,
+  # since TraderX is the actual point of origin for this data at Fiction
+  # Bank (no more-authoritative dataset exists elsewhere for it).
   - platform: postgres
     name: traderx.public.accounts
     description: "Trading accounts — client funds, internal books, and algo execution partners"
+    medallion_tier: Bronze
+    authorized_category: Source
 
   - platform: postgres
     name: traderx.public.accountusers
     description: "User-to-account entitlement mapping — which traders can act on which accounts"
+    medallion_tier: Bronze
+    authorized_category: Source
 
+  # Reclassified Bronze -> Gold: this is the sending side of a cross-domain
+  # handoff -- it now demonstrably feeds Finance's subledger (see
+  # ../../finance/dataproducts/cash-equities-subledger.yaml and
+  # finance/airflow/dags/dag_finance_eod.py's run_dbt_cash_equities_subledger
+  # task). Same reasoning as TRADES in finance/domains/assignment.yaml:
+  # already serving as this domain's certified cross-domain-consumable
+  # source qualifies it as Gold, even though it's a live operational table
+  # rather than a warehouse-curated aggregate.
   - platform: postgres
     name: traderx.public.positions
     description: "Current position book — quantity held per account/security"
+    medallion_tier: Gold
+    authorized_category: Source
 
   - platform: postgres
     name: traderx.public.trades
     description: "Executed and settling trades — full lifecycle from New through Settled/Cancelled"
+    medallion_tier: Bronze
+    authorized_category: Source
 
   - platform: postgres
     name: traderx.public.orderbook
     description: "Live order book — resting, partially filled, and terminal orders"
+    medallion_tier: Bronze
+    authorized_category: Source
 
   # ── OpenAPI (REST schemas of the same TraderX microservices) ────────────
   - platform: OpenApi

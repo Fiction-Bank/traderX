@@ -1,0 +1,38 @@
+# Data Product — Cash Equities Positions (Cash Equities)
+#
+# The sending side of the TraderX -> Finance handoff:
+#   traderx.public.positions (this Data Product)
+#     --[COPY, Airflow: fiction_bank_cash_equities_export]-->
+#   FICTION_BANK.STAGING_CASH_EQUITIES.POSITIONS_RAW (Bronze landing zone)
+#     --[dbt merge, Airflow: fiction_bank_finance_eod / run_dbt_cash_equities_subledger]-->
+#   FICTION_BANK.POSITIONS_BROKER_DEALER.POSITIONS (see
+#   ../../finance/dataproducts/cash-equities-subledger.yaml, the receiving side)
+#
+# Reclassified Gold in domains/assignment.yaml on the basis that it now
+# demonstrably serves as this domain's certified cross-domain-consumable
+# source, not because anything about the table itself changed.
+#
+# Sync with: datahub dataproduct upsert -f dataproducts/cash-equities-positions.yaml --validate-assets
+
+id: cash-equities-positions
+domain: urn:li:domain:1112
+display_name: Cash Equities Positions
+description: |-
+  TraderX's live position book -- quantity held per account/security,
+  derived from settled trades. The Cash Equities desk's authoritative
+  source for current positions, shared out to Finance's subledger via a
+  scheduled Postgres -> Snowflake export and dbt merge. Owned by Cash
+  Equities Technology.
+
+assets:
+  - urn:li:dataset:(urn:li:dataPlatform:postgres,traderx.public.positions,PROD)
+
+output_ports:
+  - urn:li:dataset:(urn:li:dataPlatform:postgres,traderx.public.positions,PROD)
+
+# owners intentionally left unset: "Cash Equities Technology" in
+# domain-hierarchy.yaml is a team label, not a resolvable corpGroup URN in
+# this sandbox. Wire this to a real corpGroup once one exists.
+properties:
+  owning_team: Cash Equities Technology
+  consumed_by: "Finance -- Balance Sheet & Treasury (Cash Equities Subledger data product)"
