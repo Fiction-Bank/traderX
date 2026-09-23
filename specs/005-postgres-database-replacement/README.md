@@ -37,3 +37,9 @@ Additional artifacts:
 Decision record:
 
 - ADR: [`docs/adr/006-state-005-use-postgres-for-database-replacement.md`](/docs/adr/006-state-005-use-postgres-for-database-replacement)
+
+Verified end-to-end 2026-09-23: `start-state-005-postgres-database-replacement-generated.sh`
+brings up real Postgres with all 10 services healthy, and the TraderX ->
+Finance subledger handoff (`finance/src/export_traderx_positions.py` ->
+Snowflake staging -> dbt merge -> `POSITIONS_BROKER_DEALER.POSITIONS`) runs
+against this state's live data for the first time.
